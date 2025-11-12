@@ -10,4 +10,6 @@ if [ -n "$GID" ]; then
   groupmod -g $GID app
 fi
 
+chown -R app:app /home/app
+
 exec gosu app "$@"
