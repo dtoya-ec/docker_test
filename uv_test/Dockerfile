@@ -1,0 +1,91 @@
+FROM ubuntu:22.04
+
+LABEL stage=single
+
+# Build arguments for configurable directory paths
+ARG DAEMON_PARENT=sakura_ii_manual_setup
+ARG EXAMPLES_PARENT=examples
+ARG MERA_PARENT=install_mera/pip
+ARG RESOURCES_DIR=docker
+
+# Environment variables for non-interactive installation
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1 \
+    TZ=UTC
+
+# Install system dependencies 
+RUN set -eux; \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc-12 \
+        llvm-14 \
+        libgomp1 \
+        ocl-icd-libopencl1 \
+        software-properties-common \
+        libgoogle-glog0v5 \
+        libboost-graph-dev \
+        virtualenv \
+        wget \
+        build-essential \
+        libssl-dev \
+        python3-dev \
+        python3-venv \
+        git \
+        python3-pip \
+        gnupg \
+        dirmngr \
+        curl \
+        python-is-python3 && \
+    add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libstdc++6 \
+        gcc-aarch64-linux-gnu \
+        g++-aarch64-linux-gnu \
+        ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh  
+ENV PATH="/root/.local/bin:${PATH}"
+
+ENV UV_COMPILE_BYTCODE=1 \
+    UV_CAHE_DIR=/home/app/.cache/uv 
+
+ENV VIRTUAL_ENV=/data/venv
+RUN uv venv /data/venv --seed 
+RUN uv pip install \
+    "numpy==1.26.4" && \
+    chmod -R og+rw /data/venv && \
+    rm -rf /root/.cache/uv
+
+# Create application user with video group access for camera/GPU support
+RUN adduser --system --group --home /home/app --shell /usr/sbin/nologin app \
+ && groupadd --gid 44 --force video \
+ && usermod --append --groups video app \
+ && chown -R app:app /home/app
+
+RUN apt-get update && \
+    apt-get install -y gosu && \
+    rm -rf /var/lib/apt/lists/*
+
+USER app
+WORKDIR /home/app
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh  
+ENV PATH="/home/app/.local/bin:${PATH}"
+
+ENV UV_COMPILE_BYTCODE=1 \
+    UV_CAHE_DIR=/home/app/.cache/uv 
+
+ENV VIRTUAL_ENV=/data/venv
+RUN uv pip install \
+    "opencv-python==4.8.1.78" && \
+    rm -rf /home/app/.cache/uv
+
+USER root
+COPY entrypoint.sh /root/entrypoint.sh
+RUN chmod +x /root/entrypoint.sh
+
+ENTRYPOINT ["/root/entrypoint.sh"]
+CMD ["bash"]
